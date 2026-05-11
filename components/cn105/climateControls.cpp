@@ -169,8 +169,8 @@ void CN105Climate::handleSingleTargetInAutoOrDry(float requested) {
 }
 
 bool CN105Climate::processTemperatureChange(const esphome::climate::ClimateCall& call) {
-    // Vérifier si une température est fournie selon les traits
-    // En modes AUTO/DRY, accepter aussi target_temperature même en dual setpoint
+    // Check if temperature is provided according to traits
+    // In AUTO/DRY modes, also accept target_temperature even in dual setpoint
     bool tempHasValue = (call.get_target_temperature_low().has_value() ||
         call.get_target_temperature_high().has_value() || call.get_target_temperature().has_value());
     /*
@@ -723,9 +723,9 @@ void CN105Climate::set_remote_temperature(float setting) {
         return;
     }
 
-    // Toujours renvoyer la température distante lorsqu’un nouvel échantillon arrive,
-    // même si la valeur n’a pas changé, afin d’éviter que l’unité Mitsubishi
-    // ne repasse sur la sonde interne faute de mise à jour régulière (#474).
+    // Always send remote temperature when new sample arrives,
+    // even if value hasn't changed, to prevent Mitsubishi unit from reverting
+    // to internal sensor due to lack of regular updates (#474).
     this->remoteTemperature_ = setting;
     this->shouldSendExternalTemperature_ = true;
     ESP_LOGD(LOG_REMOTE_TEMP, "setting remote temperature to %f", this->remoteTemperature_);
