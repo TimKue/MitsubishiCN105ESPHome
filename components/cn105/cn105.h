@@ -85,6 +85,7 @@ namespace esphome {
     class CN105Climate : public climate::Climate, public Component, public esphome::uart::UARTDevice {
 
         //friend class VaneOrientationSelect;
+        friend class SettingsGuard;  // FIX 3: Allow SettingsGuard to access private lock methods
 
     public:
 
