@@ -457,7 +457,6 @@ void CN105Climate::hpFunctionsDebug(uint8_t* packet, unsigned int length) {
 
     // FIX 8: Use ostringstream for efficient string concatenation
     std::ostringstream oss;
-    oss.reserve(length * 8);
 
     // On commence à i=1 pour sauter l'octet de commande (0x20 ou 0x22)
     for (unsigned int i = 1; i < length; i++) {
