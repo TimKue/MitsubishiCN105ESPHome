@@ -2,6 +2,7 @@
 #include "Globals.h"
 #include <math.h>
 #include <memory>
+#include <sstream>
 
 using namespace esphome;
 
