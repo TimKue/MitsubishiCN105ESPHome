@@ -184,4 +184,23 @@ inline std::optional<int> lookup_index_opt(const char* valuesMap[], int len, con
     return std::nullopt;
 }
 
+// ════════════════════════════════════════════════════════════════
+// Safe memory operations
+// ════════════════════════════════════════════════════════════════
+
+/// Safe memcpy with bounds checking
+/// Returns true if copy succeeded, false if would overflow
+inline bool safe_memcpy(uint8_t* dest, size_t dest_size,
+                        const uint8_t* src, size_t src_size) {
+    if (!dest || !src) {
+        return false;
+    }
+    if (src_size > dest_size) {
+        // Cannot use ESP_LOGE here (no esphome context), but function returns false
+        return false;
+    }
+    memcpy(dest, src, src_size);
+    return true;
+}
+
 }  // namespace cn105_protocol

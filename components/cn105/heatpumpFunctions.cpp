@@ -9,26 +9,26 @@ void CN105Climate::functionsArrived() {
 
     // Called after 2nd packet has arrived.
 
-    char states[256];
-    states[0] = '\0';  // Initialize as empty string
-    size_t remaining = sizeof(states);
-    char* pos = states;
-
+    std::string states;
+    
     heatpumpFunctionCodes codes = functions.getAllCodes();
     for (int i = 0; i < MAX_FUNCTION_CODE_COUNT; ++i) {
         if (codes.valid[i]) {
             int code = codes.code[i];
             int value = functions.getValue(code);
             if (value > 0) {  // only values 1, 2, 3 are valid -- 0 values mean something the device does not support
-                int written = snprintf(pos, remaining, "%i: %i ", code, value);
-                if (written < 0 || static_cast<size_t>(written) >= remaining) {
-                    // Buffer full or error
-                    break;
+                if (!states.empty()) {
+                    states += " ";
                 }
-                pos += written;
-                remaining -= written;
+                states += std::to_string(code) + ": " + std::to_string(value);
             }
         }
+    }
+    
+    // Safety check: string size limit
+    if (states.length() > 1024) {
+        ESP_LOGW(LOG_HARDWARE_SELECT_TAG, "Functions string truncated (too long)");
+        states.resize(1024);
     }
 
     // Publish the results of all the codes in the Functions sensor

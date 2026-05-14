@@ -13,7 +13,11 @@ void CN105Climate::sendFirstConnectionPacket() {
         this->lastReconnectTimeMs = CUSTOM_MILLIS;          // marker to prevent to many reconnections
         this->setHeatpumpConnected(false);
         uint8_t packet[CONNECT_LEN];
-        memcpy(packet, CONNECT, CONNECT_LEN);
+        
+        if (!cn105_protocol::safe_memcpy(packet, sizeof(packet), CONNECT, CONNECT_LEN)) {
+            ESP_LOGE(LOG_CONN_TAG, "Failed to copy CONNECT packet (buffer too small)");
+            return;
+        }
 
         // Choose handshake mode: standard (0x5A) or installer (0x5B)
         packet[1] = this->installer_mode_effective_ ? 0x5B : 0x5A;
@@ -111,7 +115,11 @@ void CN105Climate::writePacket(uint8_t* packet, int length, bool checkIsActive) 
             ESP_LOGE(TAG, "Packet length %d exceeds PACKET_LEN %d, dropping.", length, PACKET_LEN);
             return;
         }
-        memcpy(this->pending_packet_, packet, static_cast<size_t>(length));
+        if (!cn105_protocol::safe_memcpy(this->pending_packet_, sizeof(this->pending_packet_),
+                                         packet, static_cast<size_t>(length))) {
+            ESP_LOGE(TAG, "Failed to save pending packet (buffer too small)");
+            return;
+        }
         this->pending_packet_len_ = length;
         this->pending_check_is_active_ = checkIsActive;
         this->has_pending_packet_ = true;

@@ -66,6 +66,10 @@ public:
             // Frame is complete (checksum byte is at buffer_[bytes_read_])
             checksum_byte_ = byte;
             frame_complete_ = true;
+            
+            // Calculate checksum ONCE when frame completes (FIX 6: Caching)
+            uint8_t computed = checksum(buffer_, data_length_ + 5);
+            checksum_valid_ = (computed == checksum_byte_);
         } else {
             bytes_read_++;
         }
@@ -79,6 +83,7 @@ public:
         data_length_ = -1;
         command_ = 0;
         checksum_byte_ = 0;
+        checksum_valid_ = false;  // Reset cache
     }
 
     /// True when a complete frame (header + payload + checksum) has been received.
@@ -86,10 +91,9 @@ public:
 
     /// True when the received checksum matches the computed one.
     /// Only valid after frame_complete() returns true.
+    /// Returns cached result (computed in feed() when frame completes)
     bool checksum_valid() const {
-        if (!frame_complete_) return false;
-        uint8_t computed = checksum(buffer_, data_length_ + 5);
-        return computed == checksum_byte_;
+        return frame_complete_ && checksum_valid_;  // Just return cached value
     }
 
     /// The command byte (offset 1 in the frame header).
@@ -119,6 +123,7 @@ private:
     int data_length_ = -1;
     uint8_t command_ = 0;
     uint8_t checksum_byte_ = 0;
+    bool checksum_valid_ = false;  // FIX 6: Cached result
 };
 
 } // namespace cn105_protocol

@@ -27,6 +27,45 @@ void CN105Climate::transition_to_(DriverState next) {
     state_ = next;
 }
 
+void CN105Climate::lock_wanted_settings() {
+#ifdef USE_ESP32
+    settings_mutex_.lock();
+#else
+    // Emulate mutex with timeout
+    uint32_t start = CUSTOM_MILLIS;
+    while (this->settings_lock_count_ > 0) {
+        if (CUSTOM_MILLIS - start > LOCK_TIMEOUT_MS) {
+            ESP_LOGW("MUTEX", "Settings lock timeout after %u ms", LOCK_TIMEOUT_MS);
+            break;
+        }
+        delayMicroseconds(10);
+    }
+    this->settings_lock_count_++;
+    this->lock_start_ms_ = CUSTOM_MILLIS;
+#endif
+}
+
+void CN105Climate::unlock_wanted_settings() {
+#ifdef USE_ESP32
+    settings_mutex_.unlock();
+#else
+    if (this->settings_lock_count_ > 0) {
+        this->settings_lock_count_--;
+    } else {
+        ESP_LOGW("MUTEX", "Unlock attempted without lock");
+    }
+#endif
+}
+
+bool CN105Climate::is_wanted_settings_locked() const {
+#ifdef USE_ESP32
+    // Best effort check for ESP32
+    return true;  // Assume locked if we can't reliably check
+#else
+    return this->settings_lock_count_ > 0;
+#endif
+}
+
 
 CN105Climate::CN105Climate(uart::UARTComponent* uart) :
     UARTDevice(uart),
@@ -83,7 +122,7 @@ CN105Climate::CN105Climate(uart::UARTComponent* uart) :
 
     this->powerRequestWithoutResponses = 0;     // power request is not supported by all heatpump #112
 
-    this->remote_temp_timeout_ = 4294967295;    // uint32_t max
+    this->remote_temp_timeout_ = 300000;  // 5 minutes default (instead of UINT32_MAX)
     this->generateExtraComponents();
     this->loopCycle.init();
     this->wantedSettings.resetSettings();
@@ -252,15 +291,31 @@ void CN105Climate::pingExternalTemperature() {
 }
 
 void CN105Climate::set_remote_temp_timeout(uint32_t timeout) {
-    this->remote_temp_timeout_ = timeout;
-    if (timeout == 4294967295) {
-        ESP_LOGI(LOG_REMOTE_TEMP, "set_remote_temp_timeout is set to never.");
+    // FIX 11: Validate timeout (don't accept unrealistic values)
+    if (timeout < 10000 || timeout > 3600000) {
+        ESP_LOGW(LOG_REMOTE_TEMP, "Invalid timeout %u ms, using default 5 min", timeout);
+        this->remote_temp_timeout_ = 300000;
     } else {
-        //ESP_LOGI(LOG_ACTION_EVT_TAG, "set_remote_temp_timeout is set to %lu", timeout);
+        this->remote_temp_timeout_ = timeout;
         log_info_uint32(LOG_REMOTE_TEMP, "set_remote_temp_timeout is set to ", timeout);
-
-        this->pingExternalTemperature();
     }
+    this->pingExternalTemperature();
+}
+
+// FIX 10: Setter for configurable timeouts
+void CN105Climate::set_bootstrap_timeout(uint32_t timeout_ms) {
+    timeout_config_.bootstrap_ms = timeout_ms;
+    log_info_uint32(TAG, "Bootstrap timeout set to ", timeout_ms);
+}
+
+void CN105Climate::set_connect_response_timeout(uint32_t timeout_ms) {
+    timeout_config_.connect_response_ms = timeout_ms;
+    log_info_uint32(TAG, "Connect response timeout set to ", timeout_ms);
+}
+
+void CN105Climate::set_info_response_timeout(uint32_t timeout_ms) {
+    timeout_config_.info_response_ms = timeout_ms;
+    log_info_uint32(TAG, "Info response timeout set to ", timeout_ms);
 }
 
 void CN105Climate::set_remote_temp_keepalive_interval(uint32_t interval_ms) {

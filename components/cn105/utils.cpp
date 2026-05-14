@@ -454,10 +454,9 @@ void CN105Climate::hpPacketDebug(const uint8_t* packet, unsigned int length, con
 void CN105Climate::hpFunctionsDebug(uint8_t* packet, unsigned int length) {
     if (length < 2) return; // Pas de données à décoder
 
-    std::string output;
-    output.reserve(length * 8); // Pré-allocation pour éviter les réallocations
-
-    char buffer[16];
+    // FIX 8: Use ostringstream for efficient string concatenation
+    std::ostringstream oss;
+    oss.reserve(length * 8);
 
     // On commence à i=1 pour sauter l'octet de commande (0x20 ou 0x22)
     for (unsigned int i = 1; i < length; i++) {
@@ -468,13 +467,12 @@ void CN105Climate::hpFunctionsDebug(uint8_t* packet, unsigned int length) {
         int value = byte & 3;
 
         // Formatage "Code:Valeur" (ex: " 102:3")
-        snprintf(buffer, sizeof(buffer), " %d:%d", code, value);
-        output += buffer;
+        oss << " " << code << ":" << value;
     }
 
     // Affichage avec le tag LOG_FUNCTIONS_TAG (défini dans cn105_types.h)
     // Affiche par exemple : [FUNCTIONS] Decoded 20: 101:1 102:3 103:2 ...
-    ESP_LOGD(LOG_FUNCTIONS_TAG, "Decoded %02X:%s", packet[0], output.c_str());
+    ESP_LOGD(LOG_FUNCTIONS_TAG, "Decoded %02X:%s", packet[0], oss.str().c_str());
 }
 
 int CN105Climate::lookupByteMapIndex(const int valuesMap[], int len, int lookupValue, const char* debugInfo) {

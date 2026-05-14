@@ -23,6 +23,9 @@ void CN105Climate::setup() {
     this->swing_mode = climate::CLIMATE_SWING_OFF;
     this->parser_.reset();
     this->lastResponseMs = CUSTOM_MILLIS;
+    
+    // FIX 7: Initialize lookup cache for O(1) value lookups
+    this->lookup_cache_.initialize();
 
     // initialize diagnostic stats
     this->nbCompleteCycles_ = 0;

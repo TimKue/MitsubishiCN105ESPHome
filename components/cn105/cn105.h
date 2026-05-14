@@ -2,6 +2,9 @@
 #include "Globals.h"
 #include "cn105_protocol.h"
 #include "frame_parser.h"
+#include "lookup_cache.h"
+#include "reconnect_manager.h"
+#include "cycle_statistics.h"
 #include "esphome/components/uart/uart.h"
 #include "heatpumpFunctions.h"
 #include "van_orientation_select.h"
@@ -50,6 +53,42 @@ namespace esphome {
     };
 
     const char* driver_state_to_str(DriverState s);
+
+    // Forward declaration
+    class CN105Climate;
+
+    /// RAII guard for thread-safe settings access
+    class SettingsGuard {
+    private:
+        CN105Climate* parent_;
+        bool locked_;
+        
+    public:
+        explicit SettingsGuard(CN105Climate* parent) : parent_(parent), locked_(false) {
+            if (parent_) {
+                parent_->lock_wanted_settings();
+                locked_ = true;
+            }
+        }
+        
+        ~SettingsGuard() {
+            if (parent_ && locked_) {
+                parent_->unlock_wanted_settings();
+                locked_ = false;
+            }
+        }
+        
+        // Prevent copying
+        SettingsGuard(const SettingsGuard&) = delete;
+        SettingsGuard& operator=(const SettingsGuard&) = delete;
+        
+        // Allow moving
+        SettingsGuard(SettingsGuard&& other) noexcept 
+            : parent_(other.parent_), locked_(other.locked_) {
+            other.parent_ = nullptr;
+            other.locked_ = false;
+        }
+    };
 
     void log_info_uint32(const char* tag, const char* msg, uint32_t value, const char* suffix = "");
     void log_debug_uint32(const char* tag, const char* msg, uint32_t value, const char* suffix = "");
@@ -225,6 +264,11 @@ namespace esphome {
         float getDeadbandAdjustedTemperature(float remoteTemperature);
 
         void set_remote_temp_timeout(uint32_t timeout);
+        
+        // FIX 10: Configurable timeouts
+        void set_bootstrap_timeout(uint32_t timeout_ms);
+        void set_connect_response_timeout(uint32_t timeout_ms);
+        void set_info_response_timeout(uint32_t timeout_ms);
 
         // Configure the interval for remote temperature keep-alive (in milliseconds)
         // Set to 0 to disable keep-alive
@@ -242,6 +286,14 @@ namespace esphome {
 
         uint32_t get_update_interval() const;
         void set_update_interval(uint32_t update_interval);
+        
+        // FIX 12: Get cycle statistics for diagnostics
+        const CycleStatistics& get_cycle_statistics() const {
+            return cycle_stats_;
+        }
+        std::string get_diagnostics_string() const {
+            return cycle_stats_.to_string();
+        }
 
         climate::ClimateTraits traits() override;
 
@@ -323,6 +375,15 @@ namespace esphome {
         void testEmulateMutex(const char* retryName, std::function<void()>&& f);
         bool esp8266Mutex = false;
 #endif
+#endif
+
+        // Settings thread-safety
+#ifdef USE_ESP32
+        std::mutex settings_mutex_;
+#else
+        volatile uint8_t settings_lock_count_ = 0;
+        static constexpr uint32_t LOCK_TIMEOUT_MS = 100;
+        uint32_t lock_start_ms_ = 0;
 #endif
 
 
@@ -421,6 +482,11 @@ namespace esphome {
         void emulateMutex(const char* retryName, std::function<void()>&& f);
 #endif
 
+        // Thread-safe settings access
+        void lock_wanted_settings();
+        void unlock_wanted_settings();
+        bool is_wanted_settings_locked() const;
+
 
 
         void controlDelegate(const esphome::climate::ClimateCall& call);
@@ -466,6 +532,19 @@ namespace esphome {
         uint8_t remote_temp_debounce_skip_count_ = 0;   // Counter for consecutive debounce skips
         bool remote_temp_heartbeat_warning_shown_ = false;  // Avoid spamming the warning
         uint32_t debounce_delay_;
+        
+        // FIX 10: Configurable timeout configuration
+        struct {
+            uint32_t bootstrap_ms = 120000;      // 120 seconds
+            uint32_t connect_response_ms = 3000;  // 3 seconds
+            uint32_t info_response_ms = 800;      // 800 ms
+        } timeout_config_;
+        
+        // FIX 9: Reconnect manager with exponential backoff
+        ReconnectManager reconnect_manager_;
+        
+        // FIX 12: Cycle statistics for diagnostics
+        CycleStatistics cycle_stats_;
 
         int baud_ = 0;
         int tx_pin_ = -1;
@@ -479,6 +558,7 @@ namespace esphome {
         unsigned long lastReconnectTimeMs;
 
         cn105_protocol::FrameParser parser_;     // UART frame assembler (Phase 3A)
+        cn105_protocol::LookupCache lookup_cache_;  // FIX 7: O(1) lookups
         uint8_t* data;
 
         // All fields are default-initialized via heatpumpStatus struct defaults (NAN, false, etc.)

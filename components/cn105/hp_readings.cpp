@@ -16,7 +16,8 @@ bool CN105Climate::processInput(void) {
         processed = true;
         uint8_t inputData;
         if (this->get_hw_serial_()->read_byte(&inputData)) {
-            ESP_LOGV("Decoder", "--> %02X", inputData);
+            // Only log at VERY_VERBOSE level to minimize performance impact
+            ESP_LOGVV("Decoder", "--> %02X", inputData);
             this->parser_.feed(inputData);
             if (this->parser_.frame_complete()) {
                 this->processDataPacket();
@@ -35,9 +36,12 @@ void CN105Climate::processDataPacket() {
 
     ESP_LOGV(TAG, "processing data packet...");
 
-    // Point data at the payload section of the parser buffer
-    // Note: cast away const because downstream code uses non-const data pointer
-    this->data = const_cast<uint8_t*>(this->parser_.data());
+    // Copy data from parser buffer (safe, non-const)
+    if (this->parser_.data_length() > 64) {
+        ESP_LOGE(TAG, "Parser frame too large: %d > 64", this->parser_.data_length());
+        return;
+    }
+    memcpy(this->data, this->parser_.data(), this->parser_.data_length());
 
     this->hpPacketDebug(this->parser_.raw(), this->parser_.frame_size(), "READ");
 
