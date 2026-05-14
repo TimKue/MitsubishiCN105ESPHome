@@ -64,19 +64,8 @@ namespace esphome {
         bool locked_;
         
     public:
-        explicit SettingsGuard(CN105Climate* parent) : parent_(parent), locked_(false) {
-            if (parent_) {
-                parent_->lock_wanted_settings();
-                locked_ = true;
-            }
-        }
-        
-        ~SettingsGuard() {
-            if (parent_ && locked_) {
-                parent_->unlock_wanted_settings();
-                locked_ = false;
-            }
-        }
+        explicit SettingsGuard(CN105Climate* parent);
+        ~SettingsGuard();
         
         // Prevent copying
         SettingsGuard(const SettingsGuard&) = delete;

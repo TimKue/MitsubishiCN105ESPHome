@@ -42,7 +42,7 @@ struct CycleStatistics {
             avg_cycle_ms = (avg_cycle_ms * (total_cycles - 1) + duration_ms) / total_cycles;
         }
         
-        last_update_ms = CUSTOM_MILLIS;
+        last_update_ms = esphome::millis();
     }
     
     /// Record a timeout

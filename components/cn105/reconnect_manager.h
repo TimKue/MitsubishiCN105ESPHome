@@ -32,8 +32,8 @@ public:
         }
         
         uint32_t backoff_ms = get_backoff_ms();
-        if (current_time_ms - last_retry_time_ms >= backoff_ms) {
-            last_retry_time_ms = current_time_ms;
+        if (current_time_ms - last_retry_time_ms_ >= backoff_ms) {
+            last_retry_time_ms_ = current_time_ms;
             retry_count_++;
             return true;
         }

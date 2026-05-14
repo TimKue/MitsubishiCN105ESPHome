@@ -21,6 +21,21 @@ const char* esphome::driver_state_to_str(DriverState s) {
     }
 }
 
+// SettingsGuard implementation - FIX 3: Thread-safe settings access
+esphome::SettingsGuard::SettingsGuard(esphome::CN105Climate* parent) : parent_(parent), locked_(false) {
+    if (parent_) {
+        parent_->lock_wanted_settings();
+        locked_ = true;
+    }
+}
+
+esphome::SettingsGuard::~SettingsGuard() {
+    if (parent_ && locked_) {
+        parent_->unlock_wanted_settings();
+        locked_ = false;
+    }
+}
+
 void CN105Climate::transition_to_(DriverState next) {
     if (state_ == next) return;
     ESP_LOGI("FSM", "State: %s -> %s", driver_state_to_str(state_), driver_state_to_str(next));
