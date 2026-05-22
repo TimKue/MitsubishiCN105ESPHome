@@ -549,7 +549,7 @@ namespace esphome {
 
         cn105_protocol::FrameParser parser_;     // UART frame assembler (Phase 3A)
         cn105_protocol::LookupCache lookup_cache_;  // FIX 7: O(1) lookups
-        uint8_t* data;
+        uint8_t data[MAX_DATA_BYTES];  // FIX 11: Allocate data buffer (was uninitialized pointer)
 
         // All fields are default-initialized via heatpumpStatus struct defaults (NAN, false, etc.)
         heatpumpStatus currentStatus{};
