@@ -100,7 +100,9 @@ void CN105Climate::getPowerFromResponsePacket() {
         receivedSettings.stage = *stage_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown stage byte 0x%02X — keeping previous value", data[4]);
-        receivedSettings.stage = this->currentSettings.stage;
+        receivedSettings.stage = this->currentSettings.stage
+            ? this->currentSettings.stage
+            : STAGE_MAP[0];  // default to "IDLE" when no prior value exists
     }
 
     auto sub_mode_opt = cn105_protocol::lookup_value_opt(SUB_MODE_MAP, SUB_MODE, 6, data[3]);
@@ -108,7 +110,9 @@ void CN105Climate::getPowerFromResponsePacket() {
         receivedSettings.sub_mode = *sub_mode_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown sub_mode byte 0x%02X — keeping previous value", data[3]);
-        receivedSettings.sub_mode = this->currentSettings.sub_mode;
+        receivedSettings.sub_mode = this->currentSettings.sub_mode
+            ? this->currentSettings.sub_mode
+            : SUB_MODE_MAP[0];  // default to "NORMAL" when no prior value exists
     }
 
     auto auto_sub_mode_opt = cn105_protocol::lookup_value_opt(AUTO_SUB_MODE_MAP, AUTO_SUB_MODE, 7, data[5]);
@@ -116,7 +120,9 @@ void CN105Climate::getPowerFromResponsePacket() {
         receivedSettings.auto_sub_mode = *auto_sub_mode_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown auto_sub_mode byte 0x%02X — keeping previous value", data[5]);
-        receivedSettings.auto_sub_mode = this->currentSettings.auto_sub_mode;
+        receivedSettings.auto_sub_mode = this->currentSettings.auto_sub_mode
+            ? this->currentSettings.auto_sub_mode
+            : AUTO_SUB_MODE_MAP[0];  // default to "AUTO_OFF" when no prior value exists
     }
 
     ESP_LOGD("Decoder", "[Stage : %s]", receivedSettings.stage);
@@ -159,7 +165,9 @@ void CN105Climate::getSettingsFromResponsePacket() {
         receivedSettings.power = *power_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown power byte 0x%02X — keeping previous value", data[3]);
-        receivedSettings.power = this->currentSettings.power;
+        receivedSettings.power = this->currentSettings.power
+            ? this->currentSettings.power
+            : POWER_MAP[0];  // default to "OFF" when no prior value exists
     }
 
     receivedSettings.iSee = data[4] > 0x08 ? true : false;
@@ -169,7 +177,9 @@ void CN105Climate::getSettingsFromResponsePacket() {
         receivedSettings.mode = *mode_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown mode byte 0x%02X — keeping previous value", modeByte);
-        receivedSettings.mode = this->currentSettings.mode;
+        receivedSettings.mode = this->currentSettings.mode
+            ? this->currentSettings.mode
+            : MODE_MAP[4];  // default to "AUTO" when no prior value exists
     }
 
     ESP_LOGD("Decoder", "[Power : %s]", receivedSettings.power);
@@ -198,7 +208,9 @@ void CN105Climate::getSettingsFromResponsePacket() {
         receivedSettings.fan = *fan_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown fan byte 0x%02X — keeping previous value", data[6]);
-        receivedSettings.fan = this->currentSettings.fan;
+        receivedSettings.fan = this->currentSettings.fan
+            ? this->currentSettings.fan
+            : FAN_MAP[0];  // default to "AUTO" when no prior value exists
     }
     ESP_LOGD("Decoder", "[Fan: %s]", receivedSettings.fan);
 
@@ -207,7 +219,9 @@ void CN105Climate::getSettingsFromResponsePacket() {
         receivedSettings.vane = *vane_opt;
     } else {
         ESP_LOGW("Decoder", "Unknown vane byte 0x%02X — keeping previous value", data[7]);
-        receivedSettings.vane = this->currentSettings.vane;
+        receivedSettings.vane = this->currentSettings.vane
+            ? this->currentSettings.vane
+            : VANE_MAP[0];  // default to "AUTO" when no prior value exists
     }
     ESP_LOGD("Decoder", "[Vane: %s]", receivedSettings.vane);
 
@@ -219,7 +233,12 @@ void CN105Climate::getSettingsFromResponsePacket() {
             receivedSettings.wideVane = *wideVane_opt;
         } else {
             ESP_LOGW("Decoder", "Unknown wideVane byte 0x%02X — keeping previous value", wideVaneByte);
-            receivedSettings.wideVane = this->currentSettings.wideVane;
+            // Guard against null: on the first settings packet currentSettings.wideVane
+            // is still nullptr, and an unknown byte here would otherwise propagate a null
+            // pointer into the %s log below (and downstream), panicking the ESP32.
+            receivedSettings.wideVane = this->currentSettings.wideVane
+                ? this->currentSettings.wideVane
+                : WIDEVANE_MAP[2];  // default to "|" (center) when no prior value exists
         }
         this->wideVaneAdj = (data[10] & 0xF0) == 0x80 ? true : false;
         ESP_LOGD("Decoder", "[wideVane: %s (adj:%d)]", receivedSettings.wideVane, this->wideVaneAdj);
@@ -764,11 +783,27 @@ void CN105Climate::checkPowerAndModeSettings(heatpumpSettings& settings, bool up
         }
         if (strcmp(settings.power, "ON") == 0) {
             if (strcmp(settings.mode, "HEAT") == 0) {
-                this->mode = climate::CLIMATE_MODE_HEAT;
+                // A dual-setpoint unit driven in HEAT_COOL runs the heat pump in
+                // hardware AUTO, and the unit reports its *active operating
+                // direction* ("HEAT" here) back in the settings packet. Letting
+                // that overwrite this->mode silently drops the user out of
+                // HEAT_COOL and collapses the dual band to a single setpoint
+                // (updateTargetTemperaturesFromSettings then runs single-setpoint).
+                // Keep HEAT_COOL; the operating direction is surfaced separately
+                // by the auto_sub_mode sensor.
+                if (!(this->supports_dual_setpoint_ &&
+                      this->mode == climate::CLIMATE_MODE_HEAT_COOL)) {
+                    this->mode = climate::CLIMATE_MODE_HEAT;
+                }
             } else if (strcmp(settings.mode, "DRY") == 0) {
                 this->mode = climate::CLIMATE_MODE_DRY;
             } else if (strcmp(settings.mode, "COOL") == 0) {
-                this->mode = climate::CLIMATE_MODE_COOL;
+                // Same as the HEAT branch: hardware AUTO reports "COOL" as the
+                // active operating direction; don't let it clobber HEAT_COOL.
+                if (!(this->supports_dual_setpoint_ &&
+                      this->mode == climate::CLIMATE_MODE_HEAT_COOL)) {
+                    this->mode = climate::CLIMATE_MODE_COOL;
+                }
                 /*if (cool_setpoint != currentSettings.temperature) {
                     cool_setpoint = currentSettings.temperature;
                     save(currentSettings.temperature, cool_storage);

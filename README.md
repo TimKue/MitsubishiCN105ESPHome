@@ -752,6 +752,9 @@ sensor:
     id: ha_remote_temp
     entity_id: sensor.my_room_temperature # Your HA temperature sensor
     internal: true
+    # Uncomment the filter and lambda lines to convert F to C on incoming temperature
+#    filters:
+#      - lambda: return (x - 32) * (5.0/9.0);
 ```
 
 **Step 2:** Reference it in the climate config:
@@ -877,6 +880,9 @@ Compatible units (as reported by users):
 | MSZ-FSxxNA     | MXZ-4C36NA2      | Works                              |
 |                | MUZ-FD25NA       | Not working                        |
 | MSZ-LN35       | MUZ-LN35         | Not working                        |
+| MSZ-LN50       | MXZ-2F53VFHZ     | Works                              |
+| MSZ-KT25       | MXZ-2F53VFHZ     | Works                              |
+| MSZ-LNxx       | MXZ-4F83VFHZ     | Works                              |
 | MSZ-AP20VGK    | MXZ-4F83VF       | Works                              |
 | MSZ-FT50VG2    | MUZ-FT50VG       | Works                              |
 
